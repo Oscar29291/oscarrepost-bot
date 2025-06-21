@@ -11,10 +11,9 @@ const pendingAlbums = {};
 
 const monthsRu = [
   "января", "февраля", "марта", "апреля", "мая", "июня",
-  "июля", "августа", "сентября", "октября", "ноября", "декабря"
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ];
 
-// 🔄 Планировщик
 setInterval(() => {
   const now = new Date();
   const schedule = loadSchedule();
@@ -55,10 +54,7 @@ function buildDateKeyboard(year, month, startDay = 1) {
   for (let i = startDay; i <= daysInMonth; i += 7) {
     const row = [];
     for (let j = i; j < i + 7 && j <= daysInMonth; j++) {
-      row.push({
-        text: j.toString(),
-        callback_data: `date_${year}_${month}_${j}`,
-      });
+      row.push({ text: j.toString(), callback_data: `date_${year}_${month}_${j}` });
     }
     keyboard.push(row);
   }
@@ -73,7 +69,28 @@ function buildDateKeyboard(year, month, startDay = 1) {
   };
 }
 
-// 📤 Обработка сообщений
+function buildTimeKeyboard(year, month, day) {
+  const now = new Date();
+  const isToday = now.getFullYear() === year && now.getMonth() === month && now.getDate() === day;
+  const times = ["11:00", "16:00", "20:00"];
+  const buttons = times.filter((time) => {
+    if (!isToday) return true;
+    const [h] = time.split(":".map(Number));
+    return h > now.getHours();
+  }).map((time) => ({ text: time, callback_data: `time_${time.replace(":", "_")}` }));
+
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) {
+    rows.push(buttons.slice(i, i + 2));
+  }
+
+  return {
+    reply_markup: {
+      inline_keyboard: rows,
+    },
+  };
+}
+
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
@@ -100,46 +117,19 @@ bot.on("message", async (msg) => {
       reply_markup: {
         inline_keyboard: [
           [{ text: "📅 Выбрать дату", callback_data: "choose_date" }],
-          [{ text: "⌚ Ввести время вручную", callback_data: "manual_time" }],
           [{ text: "🚀 Опубликовать сейчас", callback_data: "post_now" }],
         ],
       },
     });
   }
-
-  if (pendingAlbums[userId]?.awaitingTimeInput) {
-    const time = msg.text.trim();
-    if (!/^\d{1,2}:\d{2}$/.test(time)) {
-      return bot.sendMessage(chatId, "Неверный формат времени. Введите в формате ЧЧ:ММ");
-    }
-
-    const post = pendingAlbums[userId];
-    const dateStr = `${post.scheduledDate.getFullYear()}-${String(post.scheduledDate.getMonth() + 1).padStart(2, "0")}-${String(post.scheduledDate.getDate()).padStart(2, "0")}`;
-
-    saveSchedule([
-      ...loadSchedule(),
-      {
-        date: dateStr,
-        time: time,
-        caption: post.caption,
-        photos: post.photos,
-        posted: false,
-      },
-    ]);
-
-    delete pendingAlbums[userId];
-    return bot.sendMessage(chatId, `✅ Пост запланирован на ${dateStr} в ${time}`);
-  }
 });
 
-// ⏰ Обработка кнопок
 bot.on("callback_query", async (query) => {
   const data = query.data;
   const userId = query.from.id;
   const chatId = query.message.chat.id;
 
-  if (!pendingAlbums[userId])
-    return bot.answerCallbackQuery(query.id, { text: "Нет активного поста." });
+  if (!pendingAlbums[userId]) return bot.answerCallbackQuery(query.id, { text: "Нет активного поста." });
 
   if (data === "ignore") return bot.answerCallbackQuery(query.id);
 
@@ -166,21 +156,33 @@ bot.on("callback_query", async (query) => {
     return bot.answerCallbackQuery(query.id);
   }
 
-  if (data === "manual_time") {
-    const now = new Date();
-    pendingAlbums[userId].scheduledDate = now;
-    pendingAlbums[userId].awaitingTimeInput = true;
-    await bot.answerCallbackQuery(query.id);
-    return bot.sendMessage(chatId, "Введите время публикации (ЧЧ:ММ):");
-  }
-
   if (data.startsWith("date_")) {
     const [, year, month, day] = data.split("_").map(Number);
     pendingAlbums[userId].scheduledDate = new Date(year, month, day);
-
     await bot.answerCallbackQuery(query.id);
-    return bot.sendMessage(chatId, "Введите время публикации (ЧЧ:ММ):").then(() => {
-      pendingAlbums[userId].awaitingTimeInput = true;
-    });
+    return bot.sendMessage(chatId, "Выберите время публикации:", buildTimeKeyboard(year, month, day));
+  }
+
+  if (data.startsWith("time_")) {
+    const [, hour, minute] = data.split("_");
+    const post = pendingAlbums[userId];
+    const date = post.scheduledDate;
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+    saveSchedule([
+      ...loadSchedule(),
+      {
+        date: dateStr,
+        time: `${hour}:${minute}`,
+        caption: post.caption,
+        photos: post.photos,
+        posted: false,
+      },
+    ]);
+
+    delete pendingAlbums[userId];
+    await bot.answerCallbackQuery(query.id);
+    return bot.sendMessage(chatId, `✅ Пост запланирован на ${dateStr} в ${hour}:${minute}`);
   }
 });
+
