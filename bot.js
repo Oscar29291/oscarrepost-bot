@@ -1,27 +1,29 @@
 const TelegramBot = require("node-telegram-bot-api");
 
-const TOKEN = "7722913115:AAEMsjjYap5XvIGdBL8bZQjQ7d3oUBjL5FM";
-const CHANNEL_USERNAME = "@diz673";
+const TOKEN = "7722913115:AAEMsjjYap5XvIGdBL8bZQjQ7d3oUBjL5FM"; // Твой токен
+const CHANNEL_USERNAME = "@diz673"; // Твой канал
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 const pendingAlbums = {};
-const ALBUM_TIMEOUT = 2000;
+const ALBUM_TIMEOUT = 2000; // 2 секунды для сбора альбома
 
+const monthsRu = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря"
+];
+
+// Функция для получения количества дней в месяце
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
 
-function buildDateKeyboard() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-
+// Функция для создания клавиатуры с выбором дат начиная с startDay
+function buildDateKeyboard(year, month, startDay = 1) {
   const daysCount = getDaysInMonth(year, month);
   const buttons = [];
 
-  // Кнопки по 7 штук в ряд
-  for (let i = 1; i <= daysCount; i += 7) {
+  for (let i = startDay; i <= daysCount; i += 7) {
     const row = [];
     for (let j = i; j < i + 7 && j <= daysCount; j++) {
       row.push({
@@ -50,27 +52,33 @@ bot.on("message", async (msg) => {
         };
       }
 
+      // Добавляем фото в альбом
       pendingAlbums[userId].photos.push({
         type: "photo",
         media: msg.photo[msg.photo.length - 1].file_id,
       });
 
+      // Обновляем подпись, если есть
       if (msg.caption) {
         pendingAlbums[userId].caption = msg.caption;
       }
 
+      // Очищаем таймер, если был
       if (pendingAlbums[userId].timeout) {
         clearTimeout(pendingAlbums[userId].timeout);
       }
 
-      // Вместо отправки сразу — предложим выбрать дату
+      // Показываем выбор даты начиная с сегодняшнего дня
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+
       await bot.sendMessage(
         chatId,
-        "Выберите дату публикации поста:",
-        buildDateKeyboard()
+        `Выберите дату публикации поста — ${monthsRu[month]} ${year}:`,
+        buildDateKeyboard(year, month, day)
       );
-
-      // Здесь не запускаем таймер на отправку сразу — ждем выбора даты
     }
   } catch (err) {
     console.error("Ошибка:", err);
@@ -78,7 +86,6 @@ bot.on("message", async (msg) => {
   }
 });
 
-// Обработка выбора даты
 bot.on("callback_query", async (callbackQuery) => {
   const data = callbackQuery.data;
   const userId = callbackQuery.from.id;
@@ -90,23 +97,18 @@ bot.on("callback_query", async (callbackQuery) => {
   }
 
   if (data.startsWith("date_")) {
-    // Пример callback_data: date_2025_5_21
     const parts = data.split("_");
     const year = Number(parts[1]);
     const month = Number(parts[2]);
     const day = Number(parts[3]);
 
-    // Сохраняем выбранную дату для публикации
     pendingAlbums[userId].scheduledDate = new Date(year, month, day);
 
-    // Подтверждаем выбор
     await bot.answerCallbackQuery(callbackQuery.id, {
-      text: `Вы выбрали дату: ${day}.${month + 1}.${year}`,
+      text: `Вы выбрали дату: ${day} ${monthsRu[month]} ${year}`,
     });
 
-    // Здесь можно далее отправить кнопки для выбора времени (11, 16, 20) — следующий шаг
-    // Пока просто подтвердим выбор и попросим выбрать время
-
+    // Кнопки для выбора времени
     const timeButtons = [
       [{ text: "11:00", callback_data: "time_11" }],
       [{ text: "16:00", callback_data: "time_16" }],
@@ -116,11 +118,7 @@ bot.on("callback_query", async (callbackQuery) => {
     await bot.sendMessage(
       pendingAlbums[userId].chatId,
       "Выберите время публикации:",
-      {
-        reply_markup: {
-          inline_keyboard: timeButtons,
-        },
-      }
+      { reply_markup: { inline_keyboard: timeButtons } }
     );
   }
 
@@ -138,20 +136,15 @@ bot.on("callback_query", async (callbackQuery) => {
       text: `Вы выбрали время: ${time}:00`,
     });
 
-    // Подтверждаем, что пост запланирован
     await bot.sendMessage(
       pendingAlbums[userId].chatId,
-      `Пост запланирован на ${pendingAlbums[
-        userId
-      ].scheduledDate.toLocaleDateString()} в ${time}:00`
+      `Пост запланирован на ${pendingAlbums[userId].scheduledDate.getDate()} ${monthsRu[pendingAlbums[userId].scheduledDate.getMonth()]} ${pendingAlbums[userId].scheduledDate.getFullYear()} в ${time}:00`
     );
 
-    // Здесь нужно сохранить пост в расписание, чтобы потом отправить по времени
-    // Пока просто удалим таймер и сбросим состояние
+    // TODO: здесь нужно сохранить пост и время в файл/базу для дальнейшей отправки
+
     clearTimeout(pendingAlbums[userId].timeout);
-
-    // TODO: Сохранить pendingAlbums[userId] в файл/базу для планировщика
-
     delete pendingAlbums[userId];
   }
 });
+
