@@ -283,4 +283,3 @@ bot.on("callback_query", async (query) => {
     return bot.sendMessage(chatId, "Введите время публикации (ЧЧ:ММ):");
   }
 });
-
