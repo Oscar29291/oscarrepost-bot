@@ -1,7 +1,6 @@
 const TelegramBot = require("node-telegram-bot-api");
 
-const TOKEN = "7722913115:AAEMsjjYap5XvIGdBL8bZQjQ7d3oUBjL5FM"; // твой токен
-const CHANNEL_USERNAME = "@diz673"; // твой канал
+const { TOKEN, CHANNEL_USERNAME } = require("./config");
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
