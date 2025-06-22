@@ -98,7 +98,6 @@ function buildTimeKeyboard(year, month, day) {
     now.getMonth() === month &&
     now.getDate() === day;
 
-  // Собираем занятые слоты для выбранного дня
   const busyTimes = new Set();
   for (const post of scheduledPosts) {
     const postDate = post.time;
@@ -115,21 +114,16 @@ function buildTimeKeyboard(year, month, day) {
     }
   }
 
-  // Проверяем, полностью ли заняты слоты в этот день
   const fullyBooked = times.every((time) => busyTimes.has(time));
 
-  // Если день полностью занят — показываем только «ввести вручную»
   if (fullyBooked) {
     return {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: "⌚ Ввести вручную", callback_data: "manual_time" }],
-        ],
+        inline_keyboard: [[{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]],
       },
     };
   }
 
-  // Иначе показываем свободные слоты + кнопку «ввести вручную»
   const availableTimes = times
     .filter((time) => {
       if (!isToday) return true;
@@ -151,7 +145,6 @@ function buildTimeKeyboard(year, month, day) {
   if (buttons.length > 0) {
     rows.push([{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]);
   } else {
-    // Если нет свободных слотов, но день не полностью занят — тоже показываем "ввести вручную"
     rows.push([{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]);
   }
 
@@ -160,12 +153,15 @@ function buildTimeKeyboard(year, month, day) {
   };
 }
 
-// --- Остальной код без изменений ---
-
 // Обработка входящих сообщений
 bot.on("message", async (msg) => {
   const userId = msg.from.id;
   const chatId = msg.chat.id;
+
+  // Обработка команды /time — показать время сервера
+  if (msg.text === "/time") {
+    return bot.sendMessage(chatId, `⏰ Текущее время сервера:\n${new Date().toISOString()}`);
+  }
 
   if (msg.media_group_id && msg.photo) {
     const groupId = msg.media_group_id;
