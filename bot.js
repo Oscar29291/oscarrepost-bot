@@ -1,5 +1,4 @@
 const TelegramBot = require("node-telegram-bot-api");
-
 const { TOKEN, CHANNEL_USERNAME } = require("./config");
 
 const bot = new TelegramBot(TOKEN, { polling: true });
@@ -9,58 +8,32 @@ const albumBuffer = {}; // Буфер для сбора фото из одног
 const scheduledPosts = []; // Запланированные посты
 
 const monthsRu = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря"
 ];
 
 const times = ["11:00", "16:00", "20:00"];
 
-// Таймер публикации - каждые 60 секунд проверяет посты и публикует, если время пришло
-setInterval(async () => {
-  const now = new Date();
-  for (const post of [...scheduledPosts]) {
-    if (now >= post.time && !post.posted) {
-      try {
-        const mediaGroup = post.photos.map((photo, index) => ({
-          ...photo,
-          caption: index === 0 ? post.caption : undefined,
-          parse_mode: index === 0 ? "HTML" : undefined,
-        }));
-
-        await bot.sendMediaGroup(CHANNEL_USERNAME, mediaGroup);
-        post.posted = true;
-        console.log("✅ Пост опубликован:", post.time.toISOString());
-      } catch (err) {
-        console.error("Ошибка при публикации:", err);
-      }
-    }
-  }
-}, 60 * 1000);
+// Функция для получения времени в часовом поясе UTC+3 (Москва)
+function getMoscowTime(date = new Date()) {
+  // UTC+3 - смещение в минутах относительно UTC
+  const moscowOffset = 3 * 60;
+  // Получаем время в миллисекундах + смещение
+  return new Date(date.getTime() + (moscowOffset + date.getTimezoneOffset()) * 60000);
+}
 
 // Проверка, полностью ли заняты все слоты в день
 function isDayFullyBooked(y, m, d) {
   const takenSlots = scheduledPosts
-    .filter((post) => {
+    .filter(post => {
       const t = post.time;
       return t.getFullYear() === y && t.getMonth() === m && t.getDate() === d;
     })
-    .map((post) => {
-      return `${String(post.time.getHours()).padStart(2, "0")}:${String(
-        post.time.getMinutes()
-      ).padStart(2, "0")}`;
+    .map(post => {
+      return `${String(post.time.getHours()).padStart(2, "0")}:${String(post.time.getMinutes()).padStart(2, "0")}`;
     });
 
-  return times.every((slot) => takenSlots.includes(slot));
+  return times.every(slot => takenSlots.includes(slot));
 }
 
 // Возвращает клавиатуру выбора даты с эмодзи для занятых дней (кликабельны)
@@ -92,7 +65,7 @@ function buildDateKeyboard(year, month, startDay = 1) {
 
 // Возвращает клавиатуру выбора времени с учётом занятости слотов
 function buildTimeKeyboard(year, month, day) {
-  const now = new Date();
+  const now = getMoscowTime();
   const isToday =
     now.getFullYear() === year &&
     now.getMonth() === month &&
@@ -108,13 +81,11 @@ function buildTimeKeyboard(year, month, day) {
     ) {
       const h = postDate.getHours();
       const m = postDate.getMinutes();
-      busyTimes.add(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
-      );
+      busyTimes.add(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
 
-  const fullyBooked = times.every((time) => busyTimes.has(time));
+  const fullyBooked = times.every(time => busyTimes.has(time));
 
   if (fullyBooked) {
     return {
@@ -125,14 +96,14 @@ function buildTimeKeyboard(year, month, day) {
   }
 
   const availableTimes = times
-    .filter((time) => {
+    .filter(time => {
       if (!isToday) return true;
       const [h, m] = time.split(":").map(Number);
       return new Date(year, month, day, h, m) > now;
     })
-    .filter((time) => !busyTimes.has(time));
+    .filter(time => !busyTimes.has(time));
 
-  const buttons = availableTimes.map((time) => ({
+  const buttons = availableTimes.map(time => ({
     text: time,
     callback_data: `time_${time.replace(":", "_")}`,
   }));
@@ -142,25 +113,44 @@ function buildTimeKeyboard(year, month, day) {
     rows.push(buttons.slice(i, i + 2));
   }
 
-  if (buttons.length > 0) {
-    rows.push([{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]);
-  } else {
-    rows.push([{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]);
-  }
+  rows.push([{ text: "⌚ Ввести вручную", callback_data: "manual_time" }]);
 
   return {
     reply_markup: { inline_keyboard: rows },
   };
 }
 
+// Таймер публикации - проверяет каждые 60 секунд, публикует посты по расписанию
+setInterval(async () => {
+  const now = getMoscowTime();
+  for (const post of [...scheduledPosts]) {
+    if (now >= post.time && !post.posted) {
+      try {
+        const mediaGroup = post.photos.map((photo, index) => ({
+          ...photo,
+          caption: index === 0 ? post.caption : undefined,
+          parse_mode: index === 0 ? "HTML" : undefined,
+        }));
+
+        await bot.sendMediaGroup(CHANNEL_USERNAME, mediaGroup);
+        post.posted = true;
+        console.log("✅ Пост опубликован:", post.time.toISOString());
+      } catch (err) {
+        console.error("Ошибка при публикации:", err);
+      }
+    }
+  }
+}, 60 * 1000);
+
 // Обработка входящих сообщений
 bot.on("message", async (msg) => {
   const userId = msg.from.id;
   const chatId = msg.chat.id;
 
-  // Обработка команды /time — показать время сервера
+  // Команда /time - показать локальное время (Московское)
   if (msg.text === "/time") {
-    return bot.sendMessage(chatId, `⏰ Текущее время сервера:\n${new Date().toISOString()}`);
+    const now = getMoscowTime();
+    return bot.sendMessage(chatId, `⏰ Текущее московское время:\n${now.toISOString().replace("Z", "")}`);
   }
 
   if (msg.media_group_id && msg.photo) {
@@ -237,13 +227,7 @@ bot.on("message", async (msg) => {
 
     const [h, m] = time.split(":").map(Number);
     const date = pendingAlbums[userId].scheduledDate;
-    const dateObj = new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate(),
-      h,
-      m
-    );
+    const dateObj = new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m);
 
     scheduledPosts.push({
       ...pendingAlbums[userId],
@@ -252,10 +236,7 @@ bot.on("message", async (msg) => {
     });
 
     delete pendingAlbums[userId];
-    return bot.sendMessage(
-      chatId,
-      `✅ Пост запланирован на ${date.toDateString()} в ${time}`
-    );
+    return bot.sendMessage(chatId, `✅ Пост запланирован на ${date.toDateString()} в ${time}`);
   }
 });
 
@@ -287,34 +268,20 @@ bot.on("callback_query", async (query) => {
   }
 
   if (data === "choose_date") {
-    const now = new Date();
-    return bot.sendMessage(
-      chatId,
-      "Выберите дату:",
-      buildDateKeyboard(now.getFullYear(), now.getMonth(), now.getDate())
-    );
+    const now = getMoscowTime();
+    return bot.sendMessage(chatId, "Выберите дату:", buildDateKeyboard(now.getFullYear(), now.getMonth(), now.getDate()));
   }
 
   if (data.startsWith("date_")) {
     const [, y, m, d] = data.split("_").map(Number);
     pendingAlbums[userId].scheduledDate = new Date(y, m, d);
-    return bot.sendMessage(
-      chatId,
-      "Выберите время:",
-      buildTimeKeyboard(y, m, d)
-    );
+    return bot.sendMessage(chatId, "Выберите время:", buildTimeKeyboard(y, m, d));
   }
 
   if (data.startsWith("time_")) {
     const [hour, minute] = data.split("_").slice(1).map(Number);
     const date = pendingAlbums[userId].scheduledDate;
-    const dateObj = new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate(),
-      hour,
-      minute
-    );
+    const dateObj = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
 
     scheduledPosts.push({
       ...pendingAlbums[userId],
@@ -323,10 +290,7 @@ bot.on("callback_query", async (query) => {
     });
 
     delete pendingAlbums[userId];
-    return bot.sendMessage(
-      chatId,
-      `✅ Пост запланирован на ${date.toDateString()} в ${hour}:${minute}`
-    );
+    return bot.sendMessage(chatId, `✅ Пост запланирован на ${date.toDateString()} в ${hour}:${minute}`);
   }
 
   if (data === "manual_time") {
@@ -334,3 +298,4 @@ bot.on("callback_query", async (query) => {
     return bot.sendMessage(chatId, "Введите время (ЧЧ:ММ):");
   }
 });
+
